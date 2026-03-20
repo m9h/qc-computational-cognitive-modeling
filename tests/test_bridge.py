@@ -3,12 +3,11 @@
 import jax.numpy as jnp
 import pytest
 
-from quantum_cognition.core.density_matrix import (
+from qcccm.core.density_matrix import (
     pure_state_density_matrix,
     von_neumann_entropy,
 )
-from quantum_cognition.core.states import computational_basis
-from quantum_cognition.models.bridge import (
+from qcccm.models.bridge import (
     beliefs_to_density_matrix,
     density_matrix_to_beliefs,
     quantum_efe,

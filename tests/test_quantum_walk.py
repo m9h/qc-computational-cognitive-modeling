@@ -3,7 +3,7 @@
 import jax.numpy as jnp
 import pytest
 
-from quantum_cognition.core.quantum_walk import (
+from qcccm.core.quantum_walk import (
     QuantumWalkParams,
     biased_coin,
     classical_vs_quantum_spreading,

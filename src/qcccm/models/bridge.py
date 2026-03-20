@@ -12,7 +12,7 @@ import jax
 import jax.numpy as jnp
 from jax import Array
 
-from quantum_cognition.core.density_matrix import von_neumann_entropy, quantum_relative_entropy
+from qcccm.core.density_matrix import von_neumann_entropy, quantum_relative_entropy
 
 
 # ---------------------------------------------------------------------------

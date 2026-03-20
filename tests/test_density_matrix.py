@@ -3,7 +3,7 @@
 import jax.numpy as jnp
 import pytest
 
-from quantum_cognition.core.density_matrix import (
+from qcccm.core.density_matrix import (
     fidelity,
     maximally_mixed,
     partial_trace,
@@ -13,7 +13,7 @@ from quantum_cognition.core.density_matrix import (
     quantum_relative_entropy,
     von_neumann_entropy,
 )
-from quantum_cognition.core.states import bell_state, computational_basis, plus_state
+from qcccm.core.states import bell_state, computational_basis, plus_state
 
 
 class TestVonNeumannEntropy:

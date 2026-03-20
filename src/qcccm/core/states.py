@@ -1,7 +1,7 @@
 """State preparation utilities: basis states, Bell states, GHZ states.
 
 All states are returned as JAX arrays (complex64) for compatibility with
-the rest of the quantum_cognition library.
+the rest of the qcccm library.
 """
 
 from __future__ import annotations
