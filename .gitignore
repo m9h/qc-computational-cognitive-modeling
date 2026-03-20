@@ -8,3 +8,6 @@ build/
 .ipynb_checkpoints/
 .ruff_cache/
 uv.lock
+autoresearch/results.tsv
+autoresearch/run.log
+*.pdf
