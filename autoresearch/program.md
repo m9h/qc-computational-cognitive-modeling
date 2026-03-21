@@ -1,3 +1,13 @@
+---
+category: research
+section: methodology
+weight: 30
+title: "Autonomous Sociophysics Quantum Research Loop"
+status: draft
+slide_summary: "Karpathy-inspired autonomous agent loop that systematically explores sociophysics models, topologies, and quantum solvers to find regimes where quantum methods outperform classical ground-state search."
+tags: [autoresearch, autonomous-agent, quantum-advantage, spin-glass, sociophysics, methodology]
+---
+
 # Sociophysics Quantum Compute Autoresearch
 
 ## Goal

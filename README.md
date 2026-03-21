@@ -1,3 +1,13 @@
+---
+category: research
+section: introduction
+weight: 10
+title: "QCCCM: Quantum Compute for Computational Cognitive Modeling"
+status: draft
+slide_summary: "First open-source quantum cognition library, exploiting the exact Hamiltonian isomorphism between disordered magnets and multi-agent social systems via JAX and PennyLane."
+tags: [quantum-computing, cognition, spin-glass, multi-agent, jax, pennylane, sociophysics, game-theory]
+---
+
 # QCCCM — Quantum Compute for Computational Cognitive Modeling
 
 > *The same Hamiltonian that describes a disordered magnet describes a society of agents with heterogeneous relationships. The same tools that find ground states of spin glasses find Nash equilibria of social systems. This library makes that isomorphism computational.*

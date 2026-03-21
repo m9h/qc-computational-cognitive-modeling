@@ -1,0 +1,27 @@
+project:
+  name: qcccm
+  title: "Quantum Compute for Computational Cognitive Modeling \u2014 bridging quantum\
+    \ computing and computational cognitive neuroscience"
+  short_title: qcccm
+authors:
+- name: Morgan Hough
+  affiliation: ''
+  email: morgan.hough@gmail.com
+  orcid: ''
+date: '2026-03-20'
+version: 0.1.0
+abstract_source: auto
+keywords: []
+exclude_drafts: false
+bibliography: references.bib
+beamer_theme: metropolis
+scan_paths:
+- .
+exclude_paths:
+- .git
+- .venv
+- node_modules
+- __pycache__
+- manuscript/output
+- .github
+output_dir: manuscript/output
