@@ -303,32 +303,96 @@ def stream_nwb_from_dandi(
     io = NWBHDF5IO(file=h5file, mode="r", load_namespaces=True)
     nwbfile = io.read()
 
-    # Extract spike trains from Units table
+    # Try Units table first (spike-sorted data)
     units = nwbfile.units
-    if units is None:
-        raise ValueError(f"No units table found in {asset_path}")
-
-    spike_times = []
-    for i in range(len(units)):
-        times = units["spike_times"][i]
-        spike_times.append(np.asarray(times))
-
-    # Duration from session
-    if nwbfile.timestamps_reference_time and nwbfile.session_start_time:
-        duration_s = float(max(
-            max(t[-1] for t in spike_times if len(t) > 0),
-            0.0,
-        ))
-    else:
+    if units is not None and len(units) > 0:
+        spike_times = []
+        for i in range(len(units)):
+            times = units["spike_times"][i]
+            spike_times.append(np.asarray(times))
         duration_s = float(max(t[-1] for t in spike_times if len(t) > 0))
+        return {
+            "spike_times": spike_times,
+            "duration_s": duration_s,
+            "n_units": len(spike_times),
+            "metadata": {
+                "dandiset_id": dandiset_id,
+                "asset_path": asset_path,
+                "source": "units_table",
+            },
+        }
+
+    # Fallback: extract spikes from raw ElectricalSeries via threshold
+    for name, obj in nwbfile.acquisition.items():
+        if hasattr(obj, "rate") and hasattr(obj, "data") and obj.rate and obj.rate >= 10000:
+            return _extract_spikes_from_raw(
+                obj, dandiset_id, asset_path, max_channels=200, max_seconds=30.0,
+            )
+
+    raise ValueError(
+        f"No units table or high-rate ElectricalSeries found in {asset_path}"
+    )
+
+
+def _extract_spikes_from_raw(
+    electrical_series,
+    dandiset_id: str,
+    asset_path: str,
+    max_channels: int = 200,
+    max_seconds: float = 30.0,
+    threshold_mult: float = 4.0,
+) -> dict:
+    """Extract spike times from raw ElectricalSeries via threshold detection.
+
+    Applies highpass filtering (subtract rolling mean) then detects
+    threshold crossings at threshold_mult * per-channel std.
+
+    Args:
+        electrical_series: pynwb ElectricalSeries object.
+        dandiset_id: for metadata.
+        asset_path: for metadata.
+        max_channels: limit channels to read.
+        max_seconds: limit duration to read.
+        threshold_mult: spike detection threshold in std units.
+
+    Returns:
+        Spike data dict compatible with run_quantum_pipeline.
+    """
+    from scipy.ndimage import uniform_filter1d
+
+    rate = float(electrical_series.rate)
+    n_samples = min(int(max_seconds * rate), electrical_series.data.shape[0])
+    n_channels = min(max_channels, electrical_series.data.shape[1])
+
+    raw = np.array(electrical_series.data[:n_samples, :n_channels], dtype=np.float32)
+
+    # Highpass filter: subtract rolling mean (200-sample window ≈ 10ms at 20kHz)
+    baseline = uniform_filter1d(raw, size=200, axis=0)
+    filtered = raw - baseline
+
+    # Per-channel threshold detection
+    per_ch_std = filtered.std(axis=0)
+    threshold = threshold_mult * per_ch_std
+    spikes = np.abs(filtered) > threshold[None, :]
+
+    # Convert to spike time lists
+    duration_s = n_samples / rate
+    spike_times = []
+    for ch in range(n_channels):
+        times = np.where(spikes[:, ch])[0] / rate
+        spike_times.append(times)
 
     return {
         "spike_times": spike_times,
         "duration_s": duration_s,
-        "n_units": len(spike_times),
+        "n_units": n_channels,
         "metadata": {
             "dandiset_id": dandiset_id,
             "asset_path": asset_path,
-            "session_description": str(nwbfile.session_description or ""),
+            "source": "raw_threshold",
+            "sampling_rate": rate,
+            "threshold_mult": threshold_mult,
+            "n_channels_read": n_channels,
+            "duration_read_s": duration_s,
         },
     }
