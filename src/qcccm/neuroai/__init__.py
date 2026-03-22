@@ -30,3 +30,19 @@ from qcccm.neuroai.multiscale import (
     neural_state_tomography as neural_state_tomography,
     synaptic_coupling_circuit as synaptic_coupling_circuit,
 )
+from qcccm.neuroai.resource_estimation import (
+    NeuralSystemSpec as NeuralSystemSpec,
+    QubitEstimate as QubitEstimate,
+    MolecularQubitEstimate as MolecularQubitEstimate,
+    estimate_neural_qubits as estimate_neural_qubits,
+    estimate_molecular_qubits as estimate_molecular_qubits,
+    full_resource_table as full_resource_table,
+)
+from qcccm.neuroai.data_interface import (
+    neural_data_to_density_matrix as neural_data_to_density_matrix,
+    quantum_neural_analysis as quantum_neural_analysis,
+    neural_state_fidelity_over_time as neural_state_fidelity_over_time,
+    spike_trains_to_rates as spike_trains_to_rates,
+    spike_raster_to_rates as spike_raster_to_rates,
+    compute_correlations as compute_correlations,
+)
