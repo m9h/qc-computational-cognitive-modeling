@@ -19,3 +19,9 @@ from qcccm.games.agreement import (
     run_agreement_simulation as run_agreement_simulation,
     run_ising as run_ising,
 )
+from qcccm.games.integration import (
+    AgreementBenchmarkResult as AgreementBenchmarkResult,
+    agreement_to_spin_glass as agreement_to_spin_glass,
+    benchmark_agreement_solvers as benchmark_agreement_solvers,
+    frustration_sweep as frustration_sweep,
+)
