@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-alf = ["alf-aif @ file:///home/mhough/dev/alf"]
+alf = ["alf-aif @ file:///Users/mhough/dev/alf"]  # local only — not resolved in CI/cloud
 ibm = ["qiskit>=1.0", "qiskit-aer>=0.14"]
 annealing = ["dwave-ocean-sdk>=6.0"]
 mitiq = ["mitiq>=0.48"]
