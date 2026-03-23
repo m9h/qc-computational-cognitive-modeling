@@ -12,7 +12,13 @@ tags: [autoresearch, autonomous-agent, quantum-advantage, spin-glass, sociophysi
 
 ## Goal
 
-Find sociophysics models and parameter regimes where **quantum methods outperform classical methods** for finding ground states (social equilibria) of disordered multi-agent systems.
+Find sociophysics models and parameter regimes where **quantum methods outperform classical methods**. Three research questions:
+
+**Q1: Consensus Time** — Does quantum tunneling (PIMC) speed up consensus in frustrated social networks? Classical tau scales as N² (1D) or N·log(N) (2D). If PIMC gives tau_quantum < tau_classical, that's a finding.
+
+**Q2: Quantum Minority Game** — Does quantum interference in strategy selection reduce herding (volatility) in the crowded phase (alpha < alpha_c ≈ 0.34)?
+
+**Q3: Ground State Search** — Can VQE/QAOA find social equilibria that Metropolis misses? (Previous experiments show this requires N > 16 or reduced MC budget.)
 
 ## The Loop
 
