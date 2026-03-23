@@ -226,7 +226,10 @@ def vqe_ground_state(
     import pennylane as qml
 
     N = params.n_agents
-    H = _import_hamiltonian(params)
+    # VQE searches for the classical ground state (ZZ only).
+    # Strip the transverse field so qml.expval(H) matches social_hamiltonian_classical.
+    params_zz = params._replace(transverse_field=0.0)
+    H = _import_hamiltonian(params_zz)
 
     dev = qml.device("default.qubit", wires=N)
 
@@ -316,7 +319,10 @@ def qaoa_ground_state(
     import pennylane as qml
 
     N = params.n_agents
-    H_cost = _import_hamiltonian(params)
+    # QAOA searches for the classical ground state (ZZ only).
+    # Strip the transverse field so qml.expval(H) matches social_hamiltonian_classical.
+    params_zz = params._replace(transverse_field=0.0)
+    H_cost = _import_hamiltonian(params_zz)
 
     dev = qml.device("default.qubit", wires=N)
 
