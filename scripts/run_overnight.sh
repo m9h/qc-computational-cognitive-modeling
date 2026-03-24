@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run autoresearch overnight on DGX Spark
-# Usage: ssh 192.168.108.72 'bash ~/dev/quantum-cognition/scripts/run_overnight.sh'
+# Usage: bash ~/dev/quantum-cognition/scripts/run_overnight.sh
 
 set -euo pipefail
 
@@ -10,9 +10,18 @@ git pull origin master
 # Clear stale results from previous buggy runs
 rm -f autoresearch/results.tsv
 
-# Run agentsciml in background
-nohup uv run agentsciml -v run \
-    --project . \
+# agentsciml lives in its own venv at ~/dev/agentsciml
+AGENTSCIML=~/dev/agentsciml/.venv/bin/agentsciml
+
+if [ ! -x "$AGENTSCIML" ]; then
+    echo "ERROR: agentsciml not found at $AGENTSCIML"
+    echo "Install: cd ~/dev/agentsciml && uv sync"
+    exit 1
+fi
+
+# Run agentsciml in background, pointing at this project
+nohup "$AGENTSCIML" -v run \
+    --project ~/dev/quantum-cognition \
     --budget 5.0 \
     --generations 10 \
     > /tmp/agentsciml_overnight.log 2>&1 &
