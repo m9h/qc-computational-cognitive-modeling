@@ -1,0 +1,209 @@
+- name: "Multi-start VQE optimization"
+  category: optimization
+  description: >
+    Run VQE from multiple random initial parameter sets and keep the best.
+    Avoids local minima in the variational landscape.
+  applicable_when: "VQE results are inconsistent across seeds or stuck in local minima"
+  code_pattern: |
+    results = [run_vqe(params, n_layers=L, max_steps=200) for _ in range(5)]
+    best = min(results, key=lambda r: r[0].energy)
+  tags: [vqe, optimization, multi-start]
+
+- name: "QAOA depth sweep"
+  category: ansatz
+  description: >
+    Systematically increase QAOA depth p from 1 to 10. Higher depth can
+    approximate the ground state better but increases optimization difficulty.
+  applicable_when: "QAOA at fixed depth underperforms; need to find optimal depth-performance tradeoff"
+  code_pattern: |
+    for depth in range(1, 11):
+        result, t = run_qaoa(params, depth=depth, max_steps=300)
+  tags: [qaoa, depth, ansatz]
+
+- name: "Trotter number optimization for PIMC"
+  category: simulation
+  description: >
+    Increase Trotter slices (n_trotter) to reduce Trotter error in path-integral
+    Monte Carlo. More slices = more accurate quantum simulation but slower.
+  applicable_when: "PIMC energy doesn't converge or shows systematic bias from exact"
+  code_pattern: |
+    for n_trotter in [4, 8, 16, 32]:
+        result, t = run_pimc(params, n_trotter=n_trotter, n_steps=5000)
+  tags: [pimc, trotter, convergence]
+
+- name: "Transverse field annealing schedule"
+  category: simulation
+  description: >
+    Instead of fixed transverse field Gamma, anneal from large Gamma (quantum
+    regime) to small Gamma (classical regime) during PIMC. Mimics quantum
+    annealing for better ground state finding.
+  applicable_when: "Fixed-Gamma PIMC doesn't find the ground state; system has complex energy landscape"
+  code_pattern: |
+    # Requires modifying PIMC call or implementing custom schedule
+    gammas = np.linspace(3.0, 0.1, n_anneal_steps)
+  tags: [pimc, annealing, transverse-field]
+
+- name: "Frustrated topology targeting"
+  category: model
+  description: >
+    Focus on graph topologies with high frustration index. Quantum methods have
+    the largest advantage on frustrated systems where classical MC gets trapped.
+    Valid topologies for ea_couplings: 'square', 'chain', 'complete'.
+    For SK (complete graph), frustration comes from random couplings.
+  applicable_when: "Quantum advantage is near zero on simple topologies"
+  code_pattern: |
+    # EA bimodal on square lattice for geometric frustration
+    adj, J = ea_couplings(N, topology='square', disorder='bimodal', seed=seed)
+    fi = frustration_index(adj, J)  # target fi > 0.3
+  tags: [frustration, topology, quantum-advantage]
+
+- name: "Temperature sweep near glass transition"
+  category: model
+  description: >
+    Sweep temperature around the spin glass transition T_g. Quantum advantage
+    is typically largest just below T_g where classical MC freezes but quantum
+    tunneling can still escape metastable states.
+  applicable_when: "Experiments use only a few temperature points or are far from T_g"
+  code_pattern: |
+    # For SK model, T_g ≈ 1.0; for EA on square lattice, T_g ≈ 0.9
+    temps = np.linspace(0.5, 1.5, 20)
+  tags: [temperature, phase-transition, spin-glass]
+
+- name: "VQE learning rate schedule"
+  category: optimization
+  description: >
+    Use cosine annealing or exponential decay for VQE learning rate instead
+    of fixed. Helps escape shallow minima early, then fine-tune near the solution.
+  applicable_when: "VQE energy oscillates or converges slowly"
+  code_pattern: |
+    # Modify VQE internals or use optax schedule
+    schedule = optax.cosine_decay_schedule(init_value=0.1, decay_steps=200)
+  tags: [vqe, learning-rate, optimization]
+
+- name: "Replica comparison"
+  category: analysis
+  description: >
+    Run multiple replicas (different seeds for the same disorder realization)
+    and compute overlap distribution P(q). Wide P(q) indicates spin glass phase
+    where quantum methods may have advantage.
+  applicable_when: "Need to confirm spin glass phase before comparing solvers"
+  code_pattern: |
+    overlaps = []
+    for s1, s2 in combinations(replicas, 2):
+        overlaps.append(overlap(s1.spins, s2.spins))
+    P_q = overlap_distribution(overlaps)
+  tags: [replica, overlap, diagnosis]
+
+- name: "System size scaling"
+  category: analysis
+  description: >
+    Test quantum advantage at increasing N (4, 6, 8, 10, 12, 14, 16, 18, 20)
+    with fixed topology and disorder. Quantum advantage may emerge or grow
+    with system size due to increasing frustration complexity.
+  applicable_when: "Quantum advantage observed at one N but unclear if it scales"
+  code_pattern: |
+    for N in range(4, 22, 2):
+        params = SocialSpinGlassParams(n_agents=N, ...)
+  tags: [scaling, system-size, finite-size]
+
+- name: "Mixed solver strategy"
+  category: solver
+  description: >
+    Use classical Metropolis output as initial state for VQE/QAOA. Classical
+    pre-optimization provides a warm start, then quantum optimizer refines.
+  applicable_when: "Pure quantum solvers start far from ground state; classical gets close but not exact"
+  code_pattern: |
+    c_result, _ = run_classical(params, n_steps=5000)
+    # Use c_result.spins as VQE initial state (requires solver modification)
+  tags: [hybrid, warm-start, solver]
+
+- name: "Disorder averaging"
+  category: analysis
+  description: >
+    Average quantum advantage over many disorder realizations (seeds) for the
+    same (N, T, topology) to get statistically meaningful comparison. Single
+    seed results can be misleading due to instance-to-instance variation.
+  applicable_when: "Results vary wildly across seeds; need robust quantum advantage estimate"
+  code_pattern: |
+    advantages = []
+    for seed in range(50):
+        adj, J = sk_couplings(N, seed=seed)
+        # ... run both solvers ...
+        advantages.append(compute_quantum_advantage(E_c, E_q, E_exact))
+    mean_advantage = np.mean(advantages)
+  tags: [disorder-average, statistics, robustness]
+
+- name: "Random field Ising model"
+  category: model
+  description: >
+    Add random external fields h_i ~ N(0, sigma_h) to the Hamiltonian. This
+    breaks spin symmetry and can create new metastable states where quantum
+    tunneling provides advantage.
+  applicable_when: "All experiments use zero external field; unexplored parameter dimension"
+  code_pattern: |
+    fields = np.random.default_rng(seed).normal(0, sigma_h, size=N)
+    params = SocialSpinGlassParams(n_agents=N, ..., fields=fields)
+  tags: [random-field, disorder, model]
+
+- name: "Topology comparison grid"
+  category: model
+  description: >
+    Compare quantum advantage across the three valid topologies (complete,
+    square, chain) at matched N and disorder strength. Different connectivity
+    creates different frustration landscapes. ONLY these three are valid.
+  applicable_when: "Only one or two topologies explored; need systematic comparison"
+  code_pattern: |
+    for topo in ['complete', 'square', 'chain']:
+        adj, J = ea_couplings(N, topology=topo, disorder='bimodal', seed=seed)
+  tags: [topology, comparison, systematic]
+
+- name: "Reduced classical budget (handicap Metropolis)"
+  category: experimental-design
+  description: >
+    CRITICAL INSIGHT: At N=6-10 with 5000 MC steps, Metropolis ALWAYS finds the
+    ground state, so quantum advantage is zero by construction. To reveal quantum
+    advantage, reduce the classical MC budget (e.g., 100-500 steps) so Metropolis
+    gets stuck in metastable states while quantum methods can still find the ground
+    state. This tests whether quantum methods converge faster, not just better.
+  applicable_when: "quantum_advantage is always ~0 because Metropolis finds exact ground state"
+  code_pattern: |
+    # Handicap classical: fewer MC steps
+    c_result, c_time = run_classical(params, n_steps=200)
+    # Quantum gets same or more budget
+    q_result, q_time = run_pimc(params, n_trotter=16, n_steps=5000)
+    advantage = compute_quantum_advantage(c_result.energy, q_result.energy, E_exact)
+  tags: [classical-budget, convergence, experimental-design]
+
+- name: "Time-to-solution metric"
+  category: experimental-design
+  description: >
+    CRITICAL INSIGHT: Instead of comparing final energies (where both methods
+    converge to the same answer given enough time), measure how many steps each
+    method needs to first reach the ground state. Record energy vs step count
+    and find the step at which E_best first equals E_exact. Quantum advantage
+    then means faster convergence, not lower final energy.
+  applicable_when: "Both classical and quantum methods find the ground state — no energy-based advantage"
+  code_pattern: |
+    # Run with trajectory tracking, then find first step where E = E_exact
+    c_result, _ = run_classical(params, n_steps=5000)
+    # Check c_result.trajectory for convergence point
+    # Compare convergence step counts between methods
+  tags: [time-to-solution, convergence-speed, metric]
+
+- name: "Large N regime (N=14-20)"
+  category: model
+  description: >
+    CRITICAL INSIGHT: At N <= 10, the energy landscape is simple enough that
+    Metropolis always finds the ground state. Push to N=14-20 where the number
+    of metastable states grows exponentially and classical MC genuinely struggles.
+    VQE/QAOA scale poorly beyond N=12, so PIMC is the primary quantum method
+    at large N. Use exact_ground_state() (brute force, feasible up to N=20)
+    for ground truth.
+  applicable_when: "All small-N experiments show zero quantum advantage"
+  code_pattern: |
+    for N in [14, 16, 18, 20]:
+        adj, J = sk_couplings(N, seed=seed)
+        # Brute force still works up to N=20
+        E_exact, _ = exact_ground_state(params)
+        # PIMC vs Metropolis at this size
+  tags: [large-N, scaling, spin-glass]

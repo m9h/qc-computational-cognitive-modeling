@@ -1,11 +1,26 @@
 name: CI
+
 on:
   push:
-    branches: [main]
+    branches: [master, main]
   pull_request:
-    branches: [main]
+    branches: [master, main]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --group dev
+      - name: Ruff check
+        run: uv run ruff check src/ tests/
+      - name: Type check
+        run: uv run mypy src/qcccm/ --ignore-missing-imports
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -18,9 +33,12 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
       - name: Install dependencies
         run: uv sync --group dev
-      - name: Lint
-        run: uv run ruff check src/ tests/
-      - name: Type check
-        run: uv run mypy src/qcccm/ --ignore-missing-imports
-      - name: Test
-        run: uv run pytest -v
+      - name: Run tests with coverage
+        run: uv run pytest -v --tb=short --cov=qcccm --cov-report=term-missing
+      - name: Check test count
+        run: |
+          COUNT=$(uv run pytest --co -q 2>/dev/null | tail -1 | grep -oP '\d+')
+          echo "Collected $COUNT tests"
+          if [ "$COUNT" -lt 200 ]; then
+            echo "WARNING: Expected 200+ tests, found $COUNT"
+          fi

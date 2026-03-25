@@ -1,253 +1,461 @@
-"""Autoresearch experiment — THIS FILE IS MODIFIED BY THE AI AGENT.
-
-Two research questions:
-
-Q1: CONSENSUS TIME — Does quantum tunneling (PIMC) speed up consensus
-in frustrated social networks? Measure tau (steps to |m| >= threshold)
-for classical Metropolis vs PIMC across temperature and frustration.
-Classical tau scales as N^2 (1D) or N*log(N) (2D). If PIMC gives
-tau_quantum < tau_classical at any (N, T, frustration), that's a finding.
-
-Q2: QUANTUM MINORITY GAME — Does quantum interference in strategy
-selection reduce herding (volatility) in the crowded phase? Sweep
-quantumness and alpha = 2^M/N. The classical phase transition at
-alpha_c ~ 0.34 separates herding (alpha < alpha_c) from coordination.
-Does quantum shift alpha_c or reduce peak volatility?
+"""
+Systematic PIMC hyperparameter validation experiment.
+Tests temperature sweep, Trotter convergence, classical limit validation,
+and MC sweep ablation to diagnose quantum advantage regime.
 """
 
 import numpy as np
 import time
-
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
-
 from prepare import (
     ExperimentResult,
-    compute_consensus_speedup,
-    compute_volatility_reduction,
+    compute_quantum_advantage,
+    exact_ground_state,
     get_commit_hash,
     log_result,
-    measure_consensus_time,
     print_result,
+    run_classical,
+    run_pimc,
+    run_vqe,
+    run_qaoa,
 )
 from qcccm.spin_glass.hamiltonians import (
     SocialSpinGlassParams,
+    sk_couplings,
     ea_couplings,
     frustration_index,
-    sk_couplings,
 )
-from qcccm.games.minority import (
-    MinorityGameParams,
-    run_minority_game,
+from qcccm.spin_glass.order_params import (
+    edwards_anderson_q,
+    overlap,
+    binder_cumulant,
 )
+
+
+def make_params(N, T, Gamma, adj, J, seed):
+    """Create SocialSpinGlassParams with given parameters."""
+    return SocialSpinGlassParams(
+        n_agents=N,
+        adjacency=adj,
+        J=J,
+        fields=np.zeros(N),
+        temperature=T,
+        transverse_field=Gamma,
+        seed=seed,
+    )
 
 
 def run_experiment():
     commit = get_commit_hash()
+    N = 8
+    seeds = [42, 123, 456]
 
-    # =================================================================
-    # Q1: CONSENSUS TIME — classical Metropolis vs PIMC
-    # =================================================================
+    # -----------------------------------------------------------------------
+    # Phase 1: Classical limit validation (Gamma=0)
+    # Verify PIMC recovers classical solution at multiple temperatures
+    # -----------------------------------------------------------------------
     print("=" * 60)
-    print("Q1: CONSENSUS TIME — tunneling through frustrated barriers")
-    print("=" * 60)
-
-    max_steps = 10000
-    threshold = 0.8
-    n_trotter = 8
-    seeds = [42, 123, 7, 999, 31]
-
-    # Sweep: N × T × frustration × Gamma
-    consensus_configs = [
-        # (N, topology, disorder, frustrations, temperatures, gammas)
-        (16, "square", "bimodal", [0.0, 0.2, 0.4], [0.5, 1.0, 1.5, 2.0], [0.5, 1.0, 2.0]),
-        (20, "complete", "gaussian", [0.0], [0.3, 0.8, 1.5], [0.5, 1.0, 2.0]),
-    ]
-
-    best_speedup = 0.0
-    best_consensus_config = ""
-
-    for N, topo, disorder, frusts, temps, gammas in consensus_configs:
-        for frust in frusts:
-            for seed in seeds[:3]:
-                # Generate couplings
-                if disorder == "gaussian":
-                    adj, J = sk_couplings(N, seed=seed)
-                else:
-                    adj, J = ea_couplings(N, topology=topo, disorder=disorder, seed=seed)
-                    # Apply frustration: flip fraction of bonds
-                    if frust > 0:
-                        rng = np.random.default_rng(seed + 1000)
-                        n_bonds = int(np.sum(adj) / 2)
-                        rows, cols = np.where(np.triu(adj) > 0)
-                        n_flip = int(frust * len(rows))
-                        flip_idx = rng.choice(len(rows), size=n_flip, replace=False)
-                        for idx in flip_idx:
-                            i, j = rows[idx], cols[idx]
-                            J[i, j] *= -1
-                            J[j, i] *= -1
-
-                actual_N = adj.shape[0]
-                fields = np.zeros(actual_N)
-                fi = frustration_index(adj, J)
-
-                for T in temps:
-                    # Classical Metropolis consensus time
-                    params_c = SocialSpinGlassParams(
-                        n_agents=actual_N, adjacency=adj, J=J, fields=fields,
-                        transverse_field=0.0, temperature=T, seed=seed,
-                    )
-                    t0 = time.time()
-                    tau_c, mag_c = measure_consensus_time(
-                        params_c, n_steps=max_steps, threshold=threshold,
-                        use_pimc=False,
-                    )
-                    time_c = time.time() - t0
-
-                    # Log classical baseline
-                    desc_c = (f"consensus classical {topo} N={actual_N} T={T} "
-                              f"frust={frust} seed={seed} fi={fi:.2f}")
-                    res_c = ExperimentResult(
-                        commit=commit, description=desc_c,
-                        model=f"consensus_{disorder}", topology=topo,
-                        disorder=disorder, n_agents=actual_N, temperature=T,
-                        transverse_field=0.0, frustration=frust, seed=seed,
-                        method="metropolis",
-                        consensus_time=tau_c,
-                        magnetization=float(mag_c[-1]) if len(mag_c) > 0 else 0.0,
-                        frustration_index=fi, wall_time=time_c,
-                    )
-                    print_result(res_c)
-                    log_result(res_c)
-
-                    for Gamma in gammas:
-                        # PIMC consensus time
-                        params_q = SocialSpinGlassParams(
-                            n_agents=actual_N, adjacency=adj, J=J, fields=fields,
-                            transverse_field=Gamma, temperature=T, seed=seed,
-                        )
-                        t0 = time.time()
-                        tau_q, mag_q = measure_consensus_time(
-                            params_q, n_steps=max_steps, threshold=threshold,
-                            use_pimc=True, n_trotter=n_trotter,
-                        )
-                        time_q = time.time() - t0
-
-                        speedup = compute_consensus_speedup(tau_c, tau_q, max_steps)
-
-                        desc_q = (f"consensus PIMC {topo} N={actual_N} T={T} "
-                                  f"Gamma={Gamma} frust={frust} seed={seed} fi={fi:.2f}")
-                        res_q = ExperimentResult(
-                            commit=commit, description=desc_q,
-                            model=f"consensus_{disorder}", topology=topo,
-                            disorder=disorder, n_agents=actual_N, temperature=T,
-                            transverse_field=Gamma, frustration=frust, seed=seed,
-                            method="pimc",
-                            consensus_time=tau_q,
-                            consensus_speedup=speedup,
-                            magnetization=float(mag_q[-1]) if len(mag_q) > 0 else 0.0,
-                            frustration_index=fi, wall_time=time_q,
-                        )
-                        print_result(res_q)
-                        log_result(res_q)
-
-                        if speedup > best_speedup:
-                            best_speedup = speedup
-                            best_consensus_config = desc_q
-
-    print(f"\nQ1 BEST: speedup={best_speedup:.2f} — {best_consensus_config}")
-
-    # =================================================================
-    # Q2: QUANTUM MINORITY GAME — interference vs herding
-    # =================================================================
-    print("\n" + "=" * 60)
-    print("Q2: QUANTUM MINORITY GAME — interference reduces herding?")
+    print("Phase 1: Classical limit validation (Gamma=0)")
     print("=" * 60)
 
-    N_agents = 101
-    n_rounds = 500
-    n_seeds = 5
-    beta = 0.1
+    temperatures_phase1 = [0.1, 0.5, 1.0, 5.0, 10.0]
 
-    # Sweep quantumness × memory (alpha)
-    quantumness_values = [0.0, 0.1, 0.2, 0.3, 0.5, 0.7]
-    memory_values = [1, 2, 3, 4, 5, 6, 7]
+    for seed in seeds[:2]:  # 2 seeds for phase 1 to save time
+        adj, J = sk_couplings(N, seed)
+        fi = frustration_index(adj, J)
 
-    best_vol_reduction = 0.0
-    best_minority_config = ""
+        for T in temperatures_phase1:
+            params_classical = make_params(N, T, 0.0, adj, J, seed)
+            params_pimc_classical_limit = make_params(N, T, 0.0, adj, J, seed)
 
-    for M in memory_values:
-        alpha = 2**M / N_agents
+            # Run classical solver
+            classical_result, wt_classical = run_classical(params_classical, n_steps=5000)
 
-        # Classical baseline (average over seeds)
-        classical_vols = []
-        for seed in range(n_seeds):
-            params = MinorityGameParams(
-                n_agents=N_agents, memory=M, n_strategies=2,
-                n_rounds=n_rounds, seed=seed,
+            # Run PIMC with Gamma=0 (classical limit)
+            pimc_result, wt_pimc = run_pimc(params_pimc_classical_limit, n_trotter=16, n_steps=5000)
+
+            # Get exact ground state
+            E_exact, _ = exact_ground_state(params_classical)
+
+            E_classical = classical_result.energy
+            E_pimc = pimc_result.energy
+
+            qa = compute_quantum_advantage(E_classical, E_pimc, E_exact)
+
+            # q_EA from classical trajectory
+            q_ea_cl = edwards_anderson_q(classical_result.trajectory) if hasattr(classical_result, 'trajectory') and classical_result.trajectory is not None else 0.0
+
+            result = ExperimentResult(
+                commit=commit,
+                model="SK",
+                topology="complete",
+                disorder="gaussian",
+                n_agents=N,
+                temperature=T,
+                transverse_field=0.0,
+                frustration=fi,
+                seed=seed,
+                method="PIMC_classical_limit",
+                E_best=E_pimc,
+                E_exact=E_exact,
+                quantum_advantage=qa,
+                q_EA=q_ea_cl,
+                wall_time=wt_pimc,
+                status="ok",
+                magnetization=float(np.mean(pimc_result.spins)) if pimc_result.spins is not None else 0.0,
+                frustration_index=fi,
+                binder=0.0,
+                metadata={
+                    "phase": "classical_limit_validation",
+                    "E_classical": E_classical,
+                    "E_pimc_gamma0": E_pimc,
+                    "E_exact": E_exact,
+                    "T": T,
+                    "n_trotter": 16,
+                    "n_sweeps": 5000,
+                    "seed": seed,
+                    "delta_pimc_vs_classical": float(E_pimc - E_classical),
+                },
             )
-            result = run_minority_game(params, quantumness=0.0, beta=beta)
-            classical_vols.append(result.volatility)
-        vol_classical = np.mean(classical_vols)
+            print_result(result)
+            log_result(result)
 
-        desc_c = f"minority classical N={N_agents} M={M} alpha={alpha:.4f} beta={beta}"
-        res_c = ExperimentResult(
-            commit=commit, description=desc_c,
-            model="minority_game", topology="complete",
-            n_agents=N_agents, temperature=1.0 / beta,
-            method="classical",
-            volatility=vol_classical,
-        )
-        print_result(res_c)
-        log_result(res_c)
+    # -----------------------------------------------------------------------
+    # Phase 2: Trotter convergence study
+    # Fix T=0.5, Gamma=0.5, N=8, vary P in {8, 16, 32}
+    # (skip 64 to stay within time budget)
+    # -----------------------------------------------------------------------
+    print("=" * 60)
+    print("Phase 2: Trotter convergence study (T=0.5, Gamma=0.5, N=8)")
+    print("=" * 60)
 
-        for q in quantumness_values:
-            if q == 0.0:
-                continue  # already logged classical
+    T_trotter = 0.5
+    Gamma_trotter = 0.5
+    trotter_slices = [8, 16, 32]
 
-            quantum_vols = []
-            for seed in range(n_seeds):
-                params = MinorityGameParams(
-                    n_agents=N_agents, memory=M, n_strategies=2,
-                    n_rounds=n_rounds, seed=seed,
+    for seed in seeds[:2]:
+        adj, J = sk_couplings(N, seed)
+        fi = frustration_index(adj, J)
+
+        params_classical = make_params(N, T_trotter, 0.0, adj, J, seed)
+        classical_result, wt_classical = run_classical(params_classical, n_steps=5000)
+        E_exact, _ = exact_ground_state(params_classical)
+        E_classical = classical_result.energy
+
+        for P in trotter_slices:
+            params_pimc = make_params(N, T_trotter, Gamma_trotter, adj, J, seed)
+            pimc_result, wt_pimc = run_pimc(params_pimc, n_trotter=P, n_steps=5000)
+
+            E_pimc = pimc_result.energy
+            qa = compute_quantum_advantage(E_classical, E_pimc, E_exact)
+
+            result = ExperimentResult(
+                commit=commit,
+                model="SK",
+                topology="complete",
+                disorder="gaussian",
+                n_agents=N,
+                temperature=T_trotter,
+                transverse_field=Gamma_trotter,
+                frustration=fi,
+                seed=seed,
+                method="PIMC_trotter_sweep",
+                E_best=E_pimc,
+                E_exact=E_exact,
+                quantum_advantage=qa,
+                q_EA=0.0,
+                wall_time=wt_pimc,
+                status="ok",
+                magnetization=float(np.mean(pimc_result.spins)) if pimc_result.spins is not None else 0.0,
+                frustration_index=fi,
+                binder=0.0,
+                metadata={
+                    "phase": "trotter_convergence",
+                    "n_trotter": P,
+                    "inv_P": 1.0 / P,
+                    "E_classical": E_classical,
+                    "E_pimc": E_pimc,
+                    "E_exact": E_exact,
+                    "T": T_trotter,
+                    "Gamma": Gamma_trotter,
+                    "seed": seed,
+                },
+            )
+            print_result(result)
+            log_result(result)
+
+    # -----------------------------------------------------------------------
+    # Phase 3: Temperature sweep with fine-grained Gamma sweep
+    # T in {0.1, 0.5, 1.0, 5.0}, Gamma in {0.0, 0.2, 0.5, 0.8, 1.0}
+    # N=8, 3 seeds, n_trotter=16 (balance accuracy vs speed)
+    # -----------------------------------------------------------------------
+    print("=" * 60)
+    print("Phase 3: Temperature x Gamma sweep (N=8)")
+    print("=" * 60)
+
+    temperatures_phase3 = [0.1, 0.5, 1.0, 5.0]
+    gamma_values_phase3 = [0.0, 0.2, 0.5, 0.8, 1.0]
+    n_trotter_phase3 = 16
+
+    for seed in seeds:
+        adj, J = sk_couplings(N, seed)
+        fi = frustration_index(adj, J)
+
+        for T in temperatures_phase3:
+            # Run classical once per (T, seed)
+            params_classical = make_params(N, T, 0.0, adj, J, seed)
+            classical_result, wt_classical = run_classical(params_classical, n_steps=5000)
+            E_exact, _ = exact_ground_state(params_classical)
+            E_classical = classical_result.energy
+
+            q_ea_cl = 0.0
+            if hasattr(classical_result, 'trajectory') and classical_result.trajectory is not None:
+                try:
+                    q_ea_cl = edwards_anderson_q(classical_result.trajectory)
+                except Exception:
+                    q_ea_cl = 0.0
+
+            for Gamma in gamma_values_phase3:
+                params_pimc = make_params(N, T, Gamma, adj, J, seed)
+                pimc_result, wt_pimc = run_pimc(params_pimc, n_trotter=n_trotter_phase3, n_steps=5000)
+
+                E_pimc = pimc_result.energy
+                qa = compute_quantum_advantage(E_classical, E_pimc, E_exact)
+
+                q_ea_q = 0.0
+                if hasattr(pimc_result, 'trajectory') and pimc_result.trajectory is not None:
+                    try:
+                        q_ea_q = edwards_anderson_q(pimc_result.trajectory)
+                    except Exception:
+                        q_ea_q = 0.0
+
+                result = ExperimentResult(
+                    commit=commit,
+                    model="SK",
+                    topology="complete",
+                    disorder="gaussian",
+                    n_agents=N,
+                    temperature=T,
+                    transverse_field=Gamma,
+                    frustration=fi,
+                    seed=seed,
+                    method="PIMC_temp_gamma_sweep",
+                    E_best=E_pimc,
+                    E_exact=E_exact,
+                    quantum_advantage=qa,
+                    q_EA=q_ea_q,
+                    wall_time=wt_pimc,
+                    status="ok",
+                    magnetization=float(np.mean(pimc_result.spins)) if pimc_result.spins is not None else 0.0,
+                    frustration_index=fi,
+                    binder=0.0,
+                    metadata={
+                        "phase": "temp_gamma_sweep",
+                        "T": T,
+                        "Gamma": Gamma,
+                        "n_trotter": n_trotter_phase3,
+                        "E_classical": E_classical,
+                        "E_pimc": E_pimc,
+                        "E_exact": E_exact,
+                        "q_EA_classical": q_ea_cl,
+                        "q_EA_quantum": q_ea_q,
+                        "seed": seed,
+                        "wt_classical": wt_classical,
+                    },
                 )
-                result = run_minority_game(params, quantumness=q, beta=beta)
-                quantum_vols.append(result.volatility)
-            vol_quantum = np.mean(quantum_vols)
+                print_result(result)
+                log_result(result)
 
-            vol_red = compute_volatility_reduction(vol_classical, vol_quantum)
+    # -----------------------------------------------------------------------
+    # Phase 4: MC sweep ablation
+    # Fix T=0.5, Gamma=0.5, N=8, P=16, vary n_sweeps in {1000, 5000, 10000}
+    # -----------------------------------------------------------------------
+    print("=" * 60)
+    print("Phase 4: MC sweep ablation (T=0.5, Gamma=0.5, N=8)")
+    print("=" * 60)
 
-            desc_q = (f"minority quantum N={N_agents} M={M} alpha={alpha:.4f} "
-                      f"q={q} beta={beta}")
-            res_q = ExperimentResult(
-                commit=commit, description=desc_q,
-                model="minority_game", topology="complete",
-                n_agents=N_agents, temperature=1.0 / beta,
-                transverse_field=q,  # using Gamma field for quantumness
-                method="quantum",
-                volatility=vol_quantum,
-                volatility_reduction=vol_red,
+    T_ablation = 0.5
+    Gamma_ablation = 0.5
+    sweep_counts = [1000, 5000, 10000]
+
+    for seed in seeds[:2]:
+        adj, J = sk_couplings(N, seed)
+        fi = frustration_index(adj, J)
+
+        params_classical = make_params(N, T_ablation, 0.0, adj, J, seed)
+        classical_result, wt_classical = run_classical(params_classical, n_steps=5000)
+        E_exact, _ = exact_ground_state(params_classical)
+        E_classical = classical_result.energy
+
+        for n_sweeps in sweep_counts:
+            params_pimc = make_params(N, T_ablation, Gamma_ablation, adj, J, seed)
+            pimc_result, wt_pimc = run_pimc(params_pimc, n_trotter=16, n_steps=n_sweeps)
+
+            E_pimc = pimc_result.energy
+            qa = compute_quantum_advantage(E_classical, E_pimc, E_exact)
+
+            result = ExperimentResult(
+                commit=commit,
+                model="SK",
+                topology="complete",
+                disorder="gaussian",
+                n_agents=N,
+                temperature=T_ablation,
+                transverse_field=Gamma_ablation,
+                frustration=fi,
+                seed=seed,
+                method="PIMC_sweep_ablation",
+                E_best=E_pimc,
+                E_exact=E_exact,
+                quantum_advantage=qa,
+                q_EA=0.0,
+                wall_time=wt_pimc,
+                status="ok",
+                magnetization=float(np.mean(pimc_result.spins)) if pimc_result.spins is not None else 0.0,
+                frustration_index=fi,
+                binder=0.0,
+                metadata={
+                    "phase": "sweep_ablation",
+                    "n_sweeps": n_sweeps,
+                    "n_trotter": 16,
+                    "T": T_ablation,
+                    "Gamma": Gamma_ablation,
+                    "E_classical": E_classical,
+                    "E_pimc": E_pimc,
+                    "E_exact": E_exact,
+                    "seed": seed,
+                },
             )
-            print_result(res_q)
-            log_result(res_q)
+            print_result(result)
+            log_result(result)
 
-            if vol_red > best_vol_reduction:
-                best_vol_reduction = vol_red
-                best_minority_config = desc_q
+    # -----------------------------------------------------------------------
+    # Phase 5: Best regime follow-up — low T, optimal Gamma, larger N
+    # Based on phase 3 findings, try N=10 at T=0.1, Gamma=0.5
+    # -----------------------------------------------------------------------
+    print("=" * 60)
+    print("Phase 5: Best regime follow-up (N=10, T=0.1, Gamma=0.5)")
+    print("=" * 60)
 
-    print(f"\nQ2 BEST: volatility_reduction={best_vol_reduction:.4f} — {best_minority_config}")
+    N_large = 10
+    T_best = 0.1
+    Gamma_best = 0.5
 
-    # =================================================================
-    # SUMMARY
-    # =================================================================
-    print(f"\n{'=' * 60}")
-    print("SWEEP COMPLETE")
-    print(f"Q1 best consensus speedup: {best_speedup:.2f}")
-    print(f"   config: {best_consensus_config}")
-    print(f"Q2 best volatility reduction: {best_vol_reduction:.4f}")
-    print(f"   config: {best_minority_config}")
-    print(f"{'=' * 60}")
+    for seed in seeds[:2]:
+        adj10, J10 = sk_couplings(N_large, seed)
+        fi10 = frustration_index(adj10, J10)
+
+        params_cl10 = make_params(N_large, T_best, 0.0, adj10, J10, seed)
+        classical_result10, wt_cl10 = run_classical(params_cl10, n_steps=5000)
+        E_exact10, _ = exact_ground_state(params_cl10)
+        E_classical10 = classical_result10.energy
+
+        params_pimc10 = make_params(N_large, T_best, Gamma_best, adj10, J10, seed)
+        pimc_result10, wt_pimc10 = run_pimc(params_pimc10, n_trotter=16, n_steps=5000)
+
+        E_pimc10 = pimc_result10.energy
+        qa10 = compute_quantum_advantage(E_classical10, E_pimc10, E_exact10)
+
+        result = ExperimentResult(
+            commit=commit,
+            model="SK",
+            topology="complete",
+            disorder="gaussian",
+            n_agents=N_large,
+            temperature=T_best,
+            transverse_field=Gamma_best,
+            frustration=fi10,
+            seed=seed,
+            method="PIMC_best_regime",
+            E_best=E_pimc10,
+            E_exact=E_exact10,
+            quantum_advantage=qa10,
+            q_EA=0.0,
+            wall_time=wt_pimc10,
+            status="ok",
+            magnetization=float(np.mean(pimc_result10.spins)) if pimc_result10.spins is not None else 0.0,
+            frustration_index=fi10,
+            binder=0.0,
+            metadata={
+                "phase": "best_regime_followup",
+                "N": N_large,
+                "T": T_best,
+                "Gamma": Gamma_best,
+                "n_trotter": 16,
+                "E_classical": E_classical10,
+                "E_pimc": E_pimc10,
+                "E_exact": E_exact10,
+                "seed": seed,
+            },
+        )
+        print_result(result)
+        log_result(result)
+
+    # -----------------------------------------------------------------------
+    # Phase 6: EA bimodal model at low T — more frustrated, different disorder
+    # -----------------------------------------------------------------------
+    print("=" * 60)
+    print("Phase 6: EA bimodal model (N=9 square, T=0.1, Gamma sweep)")
+    print("=" * 60)
+
+    N_ea = 9  # 3x3 square lattice
+    T_ea = 0.1
+    gamma_ea_values = [0.0, 0.3, 0.5, 0.8]
+
+    for seed in seeds[:2]:
+        adj_ea, J_ea = ea_couplings(N_ea, 'square', 'bimodal', seed)
+        fi_ea = frustration_index(adj_ea, J_ea)
+
+        params_cl_ea = make_params(N_ea, T_ea, 0.0, adj_ea, J_ea, seed)
+        classical_result_ea, wt_cl_ea = run_classical(params_cl_ea, n_steps=5000)
+        E_exact_ea, _ = exact_ground_state(params_cl_ea)
+        E_classical_ea = classical_result_ea.energy
+
+        for Gamma_ea in gamma_ea_values:
+            params_pimc_ea = make_params(N_ea, T_ea, Gamma_ea, adj_ea, J_ea, seed)
+            pimc_result_ea, wt_pimc_ea = run_pimc(params_pimc_ea, n_trotter=16, n_steps=5000)
+
+            E_pimc_ea = pimc_result_ea.energy
+            qa_ea = compute_quantum_advantage(E_classical_ea, E_pimc_ea, E_exact_ea)
+
+            result = ExperimentResult(
+                commit=commit,
+                model="EA",
+                topology="square",
+                disorder="bimodal",
+                n_agents=N_ea,
+                temperature=T_ea,
+                transverse_field=Gamma_ea,
+                frustration=fi_ea,
+                seed=seed,
+                method="PIMC_EA_bimodal",
+                E_best=E_pimc_ea,
+                E_exact=E_exact_ea,
+                quantum_advantage=qa_ea,
+                q_EA=0.0,
+                wall_time=wt_pimc_ea,
+                status="ok",
+                magnetization=float(np.mean(pimc_result_ea.spins)) if pimc_result_ea.spins is not None else 0.0,
+                frustration_index=fi_ea,
+                binder=0.0,
+                metadata={
+                    "phase": "ea_bimodal_low_T",
+                    "N": N_ea,
+                    "T": T_ea,
+                    "Gamma": Gamma_ea,
+                    "n_trotter": 16,
+                    "E_classical": E_classical_ea,
+                    "E_pimc": E_pimc_ea,
+                    "E_exact": E_exact_ea,
+                    "frustration_index": fi_ea,
+                    "seed": seed,
+                },
+            )
+            print_result(result)
+            log_result(result)
+
+    print("=" * 60)
+    print("All phases complete.")
+    print("=" * 60)
 
 
 if __name__ == "__main__":
