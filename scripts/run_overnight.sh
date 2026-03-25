@@ -4,6 +4,9 @@
 
 set -euo pipefail
 
+# Source bashrc for API keys (nohup doesn't inherit interactive shell env)
+source ~/.bashrc 2>/dev/null || true
+
 cd ~/dev/quantum-cognition
 git pull origin master
 
