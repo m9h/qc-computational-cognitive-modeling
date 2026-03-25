@@ -10,8 +10,9 @@ source ~/.bashrc 2>/dev/null || true
 cd ~/dev/quantum-cognition
 git pull origin master
 
-# Clear stale results from previous buggy runs
+# Clear stale results and tree from previous runs to start fresh
 rm -f autoresearch/results.tsv
+rm -f autoresearch/tree.json
 
 # agentsciml lives in its own venv at ~/dev/agentsciml
 AGENTSCIML=~/dev/agentsciml/.venv/bin/agentsciml
@@ -25,7 +26,7 @@ fi
 # Run agentsciml in background, pointing at this project
 nohup "$AGENTSCIML" -v run \
     --project ~/dev/quantum-cognition \
-    --budget 5.0 \
+    --budget 10.0 \
     --generations 10 \
     > /tmp/agentsciml_overnight.log 2>&1 &
 
