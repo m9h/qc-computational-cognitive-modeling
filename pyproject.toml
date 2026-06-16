@@ -38,7 +38,7 @@ ibm = ["qiskit>=1.0", "qiskit-aer>=0.14"]
 annealing = ["dwave-ocean-sdk>=6.0"]
 mitiq = ["mitiq>=0.48"]
 all = ["qcccm[ibm,annealing,mitiq]"]
-dev = ["pytest>=9.0", "mypy", "ruff", "nbval", "pytest-cov"]
+dev = ["pytest>=9.0", "mypy", "ruff", "nbval", "pytest-cov", "nbconvert", "ipykernel"]
 
 [build-system]
 requires = ["uv_build>=0.9.18,<0.10.0"]

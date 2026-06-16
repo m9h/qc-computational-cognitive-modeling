@@ -56,3 +56,10 @@ from qcccm.neuroai.smni_eeg import (
     load_trial as load_trial,
     stack_trials as stack_trials,
 )
+from qcccm.neuroai.pathint import (
+    build_transition_matrix as build_transition_matrix,
+    delta_density as delta_density,
+    linear_drift as linear_drift,
+    moments as moments,
+    propagate as propagate,
+)
