@@ -11,27 +11,18 @@ Run:  python scripts/reproduce_smni_cmi.py
 from __future__ import annotations
 
 import os
-import sys
 
 import jax
 jax.config.update("jax_enable_x64", True)   # parity with the numpy reference
 import jax.numpy as jnp
 import numpy as np
 
-# Locate the smni-eeg loader: prefer the local satellite checkout, fall back to
-# the copy vendored under research/smni-eeg (so this runs on a fresh clone).
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_VENDORED = os.path.normpath(os.path.join(_HERE, "..", "research", "smni-eeg"))
-_SATELLITE = os.path.expanduser("~/Workspace/smni-eeg")
-_SRC_BASE = _SATELLITE if os.path.isdir(os.path.join(_SATELLITE, "src")) else _VENDORED
-sys.path.insert(0, os.path.join(_SRC_BASE, "src"))
-from load_rd import build_set  # noqa: E402
+from qcccm.models import smni
+from qcccm.neuroai.smni_eeg import build_set
 
-from qcccm.models import smni  # noqa: E402
-
-# Data + caches are NOT in git (large). Default to the satellite; override with
-# SMNI_EEG / SMNI_EEG_DATA / SMNI_EEG_OUT when continuing on another system.
-_BASE = os.environ.get("SMNI_EEG", _SATELLITE)
+# Data + caches are NOT in git (large). Default to the local satellite checkout;
+# override with SMNI_EEG / SMNI_EEG_DATA / SMNI_EEG_OUT on another system.
+_BASE = os.environ.get("SMNI_EEG", os.path.expanduser("~/Workspace/smni-eeg"))
 DATA = os.environ.get("SMNI_EEG_DATA", os.path.join(_BASE, "data"))
 OUT = os.environ.get("SMNI_EEG_OUT", os.path.join(_BASE, "out"))
 
@@ -42,11 +33,10 @@ def welch_t(a: np.ndarray, c: np.ndarray) -> float:
 
 
 def load(set_name: str):
-    d = build_set(os.path.join(DATA, set_name),
+    s = build_set(os.path.join(DATA, set_name),
                   cache=os.path.join(OUT, f"cache_{set_name}.npz"))
-    M = jnp.asarray(np.asarray(d["M"], dtype=np.float64))
-    groups = np.asarray(d["groups"])
-    return M, groups
+    M = jnp.asarray(np.asarray(s.M, dtype=np.float64))
+    return M, np.asarray(s.groups)
 
 
 def group_sep(cmi: jnp.ndarray, groups: np.ndarray, label: str) -> None:

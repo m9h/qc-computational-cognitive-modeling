@@ -46,3 +46,13 @@ from qcccm.neuroai.data_interface import (
     spike_raster_to_rates as spike_raster_to_rates,
     compute_correlations as compute_correlations,
 )
+from qcccm.neuroai.smni_eeg import (
+    FS_HZ as FS_HZ,
+    SMNICMISet as SMNICMISet,
+    Trial as Trial,
+    build_set as build_set,
+    load_dataset as load_dataset,
+    load_subject as load_subject,
+    load_trial as load_trial,
+    stack_trials as stack_trials,
+)
