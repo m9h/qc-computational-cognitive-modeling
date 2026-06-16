@@ -30,3 +30,8 @@ results/
 /adapter.py
 /1
 /2
+
+# SMNI data caches
+*.npz
+research/smni-eeg/out/
+research/smni-eeg/data/
