@@ -53,6 +53,14 @@ CMI does not discriminate held-out subjects; a trivial variance feature does. Me
 precision-whitened innovation `(Ṁ−g)/σ²`, which removes the amplitude/variance scale that carries
 the across-subject group difference.
 
+**Coordinate-free check.** A natural objection is that mean|CMI| is chart-dependent (not invariant
+to channel remixing), so it may understate Ingber's multivariate claim. We therefore also tested
+**reparameterization-invariant** flow features — the spectrum of the per-subject drift Jacobian
+(divergence, decay/oscillation rates), invariant under `A → PAP⁻¹` (`GEOMETRY.md`). Subject-level
+LOO AUC: invariants **0.343**, mean|CMI| 0.515, variance **0.616**. The invariant features also fail
+(not above chance). The group signal is in EEG amplitude; no SMNI-dynamics-derived feature —
+chart-dependent or invariant — recovers it across subjects.
+
 ### 3.3 Quantum coherence and nonlinear drift add nothing
 Coherence sweep: pure-coherence (q=1) entropy feature shows no separation even on the
 subject-overlapping TEST (|t|=0.2) (`CMI_EFE.md`). Nonlinear `tanh` drift: negligible NLL gain,
