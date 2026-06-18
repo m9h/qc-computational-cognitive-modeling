@@ -63,3 +63,5 @@ from qcccm.neuroai.pathint import (
     moments as moments,
     propagate as propagate,
 )
+
+from qcccm.neuroai import qpathint as qpathint
